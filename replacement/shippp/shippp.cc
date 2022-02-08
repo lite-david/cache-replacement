@@ -64,10 +64,9 @@ void CACHE::initialize_replacement()
   }
 
   int leaders = 0;
-  std::size_t rand_seed = 1103515245 + 12345;
 
   while (leaders < NUM_LEADER_SETS) {
-    int randval = rand_seed % NUM_SET;
+    int randval = rand() % NUM_SET;
 
     if (ship_sample[randval] == 0) {
       ship_sample[randval] = 1;

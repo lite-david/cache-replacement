@@ -580,9 +580,7 @@ pref_cycles  = {(c['prefetcher_name'], c['prefetcher_cycle_operate']) for c in c
 pref_finals  = {(c['prefetcher_name'], c['prefetcher_final_stats']) for c in caches.values()}
 # make #define config changes to LLC prefetcher
 # check if replacement policy has settings in json file
-print(caches['LLC']['replacement'])
 if caches['LLC']['replacement'] in caches['LLC']:
-    print("Updating llc replacement config")
     policy = caches['LLC']['replacement']
     parameter = caches['LLC'][policy]
     # Hacky: Supports only 1 configurable parameter 
