@@ -2,18 +2,64 @@ from typing import List, Dict, Callable
 import subprocess
 import os
 import csv
+import time
 
 
 class LaunchExperiment:
-    def __init__(self, experiments: List, tracelist: str, args: str, batchsize: int = 16, sleep: int = 6):
-        self.experiments = experiments
+    def __init__(self, binary: str, bindir:str, warmup_inst:int, simulation_inst:int, tracelist:str, tracedir:str, batchsize:int):
+        self.binary = binary
+        self.bindir = bindir
+        self.warmup_inst = warmup_inst
+        self.simulation_inst = simulation_inst
         self.tracelist = tracelist
-        self.args = args
         self.batchsize = batchsize
-        self.sleep = sleep
+        self.tracedir = tracedir
 
     def run(self):
-        pass
+        # create a directory for the results for the binary
+        results_dir = f'results_{self.binary}'
+        os.makedirs(results_dir, exist_ok=True)
+        base_cmd = [self.bindir + '/' + self.binary,
+                    "--warmup_instructions", str(self.warmup_inst),
+                    "--simulation_instructions", str(self.simulation_inst),
+                    "--trace"]
+        with open(self.tracelist, "r") as f:
+            traces = f.readlines()
+        traces = [x.strip() for x in traces]
+        processes = {}
+        files = {}
+        inflight = 0
+        try:
+            for trace in traces:
+                cmd = base_cmd + [self.tracedir + "/" + trace]
+                if os.path.exists(f'{results_dir}/{trace}.txt'):
+                    print(f'File exists, skipping {results_dir}/{trace}.txt')
+                    continue
+                with open(f'{results_dir}/{trace}.txt', "w") as f:
+                    print(" ".join(cmd))
+                    processes[inflight] = subprocess.Popen(cmd, stdout=f, stderr=f)
+                    files[inflight] = f'{results_dir}/{trace}.txt'
+                inflight += 1
+                completed = []
+                while inflight == self.batchsize:
+                    time.sleep(120)
+                    for i,p in processes.items():
+                        if p.poll() is not None:
+                            completed.append(i)
+                    inflight = inflight - len(completed)
+                for i in completed:
+                    del processes[i]
+                    del files[i]
+            for i,p in processes.items():
+                p.wait()
+        except KeyboardInterrupt:
+            print("Received interrupt, killing processes & cleaning up")
+            for i,p in processes.items():
+                if p.poll() is not None:
+                    p.kill()
+                    os.remove(files[i])
+
+
 
 
 class Analyzer:
