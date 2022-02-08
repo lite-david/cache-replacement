@@ -578,6 +578,26 @@ pref_ops     = {(c['prefetcher_name'], c['prefetcher_cache_operate']) for c in c
 pref_fill    = {(c['prefetcher_name'], c['prefetcher_cache_fill']) for c in caches.values()}
 pref_cycles  = {(c['prefetcher_name'], c['prefetcher_cycle_operate']) for c in caches.values()}
 pref_finals  = {(c['prefetcher_name'], c['prefetcher_final_stats']) for c in caches.values()}
+# make #define config changes to LLC prefetcher
+# check if replacement policy has settings in json file
+print(caches['LLC']['replacement'])
+if caches['LLC']['replacement'] in caches['LLC']:
+    print("Updating llc replacement config")
+    policy = caches['LLC']['replacement']
+    parameter = caches['LLC'][policy]
+    # Hacky: Supports only 1 configurable parameter 
+    parameter_name = list(parameter.keys())[0]
+    parameter_val = parameter[parameter_name]
+    with open(f'replacement/{policy}/{policy}.cc', 'r') as f:
+        src_code = f.readlines()
+    i = 0
+    while i < len(src_code):
+        if src_code[i].startswith("#define") and src_code[i].find(parameter_name) != -1:
+            src_code[i] = f'#define {parameter_name} {parameter_val}\n'
+            break
+        i+=1
+    with open(f'replacement/{policy}/{policy}.cc', 'w') as f:
+        f.writelines(src_code)
 with open('inc/cache_modules.inc', 'wt') as wfp:
     wfp.write('enum class repl_t\n{\n    ')
     wfp.write(',\n    '.join(repl_names))
