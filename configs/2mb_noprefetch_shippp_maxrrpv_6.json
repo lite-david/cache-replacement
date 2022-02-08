@@ -156,7 +156,7 @@
         "prefetch_activate": "LOAD,PREFETCH",
         "prefetcher": "no",
         "replacement": "shippp",
-        "shipp":{
+        "shippp":{
           "maxRRPV":6
         }
     },
