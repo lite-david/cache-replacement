@@ -26,8 +26,8 @@ class LaunchExperiment:
         with open(self.tracelist, "r") as f:
             traces = f.readlines()
         traces = [x.strip() for x in traces]
-        processes = {}
-        files = {}
+        processes = []
+        files = []
         inflight = 0
         try:
             for trace in traces:
@@ -37,27 +37,24 @@ class LaunchExperiment:
                     continue
                 with open(f'{results_dir}/{trace}.txt', "w") as f:
                     print(" ".join(cmd))
-                    processes[inflight] = subprocess.Popen(cmd, stdout=f, stderr=f)
-                    files[inflight] = f'{results_dir}/{trace}.txt'
+                    processes.append(subprocess.Popen(cmd, stdout=f, stderr=f))
+                    files.append(f'{results_dir}/{trace}.txt')
                 inflight += 1
                 completed = []
                 while inflight == self.batchsize:
-                    time.sleep(120)
-                    for i,p in processes.items():
+                    for i,p in enumerate(processes):
                         if p.poll() is not None:
                             completed.append(i)
                     inflight = inflight - len(completed)
                 for i in completed:
                     del processes[i]
                     del files[i]
-            for i,p in processes.items():
+            for p in processes:
                 p.wait()
         except KeyboardInterrupt:
             print("Received interrupt, killing processes & cleaning up")
-            for i,p in processes.items():
-                if p.poll() is not None:
-                    p.kill()
-                    os.remove(files[i])
+            for i,p in enumerate(processes):
+                os.remove(files[i])
 
 
 
