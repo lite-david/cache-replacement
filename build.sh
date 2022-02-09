@@ -1,9 +1,17 @@
-./config.sh ./configs/2mb_noprefetch_shippp_maxrrpv_4.json
-make
-./config.sh ./configs/2mb_noprefetch_shippp_maxrrpv_5.json
-make
-./config.sh ./configs/2mb_noprefetch_shippp_maxrrpv_6.json
-make
-./config.sh ./configs/2mb_noprefetch_shippp_maxrrpv_7.json
-make
+build_maxrrpv_schmoo() {
+  for i in ./configs/*maxrrpv*.json; do
+    ./config.sh $i
+    make
+  done
+}
+
+build_maxshctr_schmoo() {
+  for i in ./configs/*maxshctr*.json; do
+    ./config.sh $i
+    make
+  done
+}
+
+#build_maxrrpv_schmoo
+build_maxshctr_schmoo
 
