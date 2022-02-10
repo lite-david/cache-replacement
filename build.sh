@@ -1,17 +1,14 @@
-build_maxrrpv_schmoo() {
-  for i in ./configs/*maxrrpv*.json; do
+build_schmoo() {
+  for i in ./configs/*$1*.json; do
     ./config.sh $i
     make
   done
 }
 
-build_maxshctr_schmoo() {
-  for i in ./configs/*maxshctr*.json; do
-    ./config.sh $i
-    make
-  done
-}
-
-#build_maxrrpv_schmoo
-build_maxshctr_schmoo
+#build_schmoo shippp_maxrrpv
+#build_schmoo shippp_maxshctr
+#build_schmoo shippp_leaders
+#build_schmoo hawkeye_maxrrpv
+#build_schmoo hawkeye_sampler
+build_schmoo hawkeye_optgenvector
 

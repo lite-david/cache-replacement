@@ -42,6 +42,7 @@ class LaunchExperiment:
                 inflight += 1
                 completed = []
                 while inflight == self.batchsize:
+                    time.sleep(2)
                     for i,p in enumerate(processes):
                         if p.poll() is not None:
                             completed.append(i)
