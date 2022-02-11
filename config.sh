@@ -583,17 +583,15 @@ pref_finals  = {(c['prefetcher_name'], c['prefetcher_final_stats']) for c in cac
 if caches['LLC']['replacement'] in caches['LLC']:
     policy = caches['LLC']['replacement']
     parameter = caches['LLC'][policy]
-    # Hacky: Supports only 1 configurable parameter 
-    parameter_name = list(parameter.keys())[0]
-    parameter_val = parameter[parameter_name]
     with open(f'replacement/{policy}/{policy}.cc', 'r') as f:
         src_code = f.readlines()
-    i = 0
-    while i < len(src_code):
-        if src_code[i].startswith("#define") and src_code[i].find(parameter_name) != -1:
-            src_code[i] = f'#define {parameter_name} {parameter_val}\n'
-            break
-        i+=1
+    for parameter_name, parameter_val in parameter.items():
+        i = 0
+        while i < len(src_code):
+            if src_code[i].startswith("#define") and src_code[i].find(parameter_name) != -1:
+                src_code[i] = f'#define {parameter_name} {parameter_val}\n'
+                break
+            i+=1
     with open(f'replacement/{policy}/{policy}.cc', 'w') as f:
         f.writelines(src_code)
 with open('inc/cache_modules.inc', 'wt') as wfp:

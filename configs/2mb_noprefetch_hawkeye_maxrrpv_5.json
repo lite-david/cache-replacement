@@ -157,7 +157,9 @@
         "prefetcher": "no",
         "replacement": "hawkeye",
         "hawkeye":{
-          "maxRRPV":5
+          "maxRRPV":5,
+          "OPTGEN_VECTOR_SIZE":128,
+          "SAMPLED_CACHE_SIZE":2800
         }
     },
 

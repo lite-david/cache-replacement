@@ -73,8 +73,8 @@ class Analyzer:
                      "LLC AVERAGE MISS LATENCY",
                      ]
 
-        self.cols = ["CPU 0 cumulative IPC",
-                     "cpu0_L2C AVERAGE MISS LATENCY",
+        self.cols = ["Cumulative IPC",
+                     "L2C AVERAGE MISS LATENCY",
                      "LLC TOTAL ACCESS",
                      "LLC TOTAL HIT",
                      "LLC TOTAL MISS",
@@ -90,7 +90,7 @@ class Analyzer:
                      "LLC TRANSLATION ACCESS",
                      "LLC TRANSLATION HIT",
                      "LLC TRANSLATION MISS",
-                     "LLC AVERAGE MISS LATENCY",
+                     "LLC AVERAGE MISS LATENCY"
                      ]
 
     def gencsv(self, output_file = "results.csv"):
