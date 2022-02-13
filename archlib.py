@@ -3,6 +3,66 @@ import subprocess
 import os
 import csv
 import time
+import pandas as pd
+from matplotlib import pyplot as plt
+from scipy import stats
+
+class HarryPlotter:
+    def __init__(self):
+        self.metrics = {
+            'ipc':[],
+            'l2_latency':[],
+            'mpki':[]
+        }
+        self.data = {}
+        self.schmoo_param = None
+    
+    def plotmetric(self, metric:str):
+        x = [xy[0] for xy in self.metrics[metric]]
+        y = [xy[1] for xy in self.metrics[metric]]
+        plt.plot(x, y, marker='o')
+        plt.xlabel(self.schmoo_param)
+        plt.ylabel(metric)
+        plt.show()
+
+    def plotmetrics(self, metrics:list):
+        fig, ax = plt.subplots(len(metrics), 1)
+        for i,metric in enumerate(metrics):
+            x = [xy[0] for xy in self.metrics[metric]]
+            y = [xy[1] for xy in self.metrics[metric]]
+            ax[i].plot(x, y, 'o-')
+            ax[i].set_ylabel(metric)
+        
+        ax[-1].set_xlabel(self.schmoo_param)
+        plt.show()
+
+    def agg(self, csvs: list, schmoo_param:str):
+        self.schmoo_param = schmoo_param
+        for csv in csvs:
+            schmoo_val = csv.split('.csv')[0].split('-')[-1]
+            df = pd.read_csv(f'{csv}')
+            ipc = stats.gmean(df.iloc[:,1])
+            l2_latency = float(df[['L2C AVERAGE MISS LATENCY']].mean())
+            mpki = stats.gmean(df.iloc[:,5]/100000)
+            self.metrics['ipc'].append((int(schmoo_val), ipc))
+            self.metrics['l2_latency'].append((int(schmoo_val), l2_latency))
+            self.metrics['mpki'].append((int(schmoo_val), mpki))
+        for k,v in self.metrics.items():
+            v.sor()
+
+    def load(self, csvs:list, columns:list, names:list):
+        for csv,name in zip(csvs, names):
+            df = pd.read_csv(f'{csv}')
+            df = df[columns]
+            self.data[name] = df
+
+    def plotboxplot(self, names:list, column:str):
+        x = [self.data[name][column].values.tolist() for name in names]
+        plt.boxplot(x, labels=names)
+        plt.ylabel(column)
+        plt.show()
+
+
 
 
 class LaunchExperiment:
