@@ -10,5 +10,6 @@ build_schmoo() {
 #build_schmoo shippp_leaders
 #build_schmoo hawkeye_maxrrpv
 #build_schmoo hawkeye_sampler
-build_schmoo hawkeye_optgenvector
+#build_schmoo hawkeye_optgenvector
+build_schmoo shippp_shctsize
 

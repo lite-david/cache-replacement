@@ -21,11 +21,13 @@ class HarryPlotter:
         x = [xy[0] for xy in self.metrics[metric]]
         y = [xy[1] for xy in self.metrics[metric]]
         plt.plot(x, y, marker='o')
+        plt.rc('font', size=15) 
         plt.xlabel(self.schmoo_param)
         plt.ylabel(metric)
         plt.show()
 
     def plotmetrics(self, metrics:list):
+        plt.rc('font', size=14) 
         fig, ax = plt.subplots(len(metrics), 1)
         for i,metric in enumerate(metrics):
             x = [xy[0] for xy in self.metrics[metric]]
@@ -43,12 +45,14 @@ class HarryPlotter:
             df = pd.read_csv(f'{csv}')
             ipc = stats.gmean(df.iloc[:,1])
             l2_latency = float(df[['L2C AVERAGE MISS LATENCY']].mean())
-            mpki = stats.gmean(df.iloc[:,5]/100000)
+            mpki_df = df[['LLC TOTAL MISS']]/100000
+            mpki = float(mpki_df.mean())
+            #mpki = stats.gmean(df.iloc[:,5]/100000)
             self.metrics['ipc'].append((int(schmoo_val), ipc))
             self.metrics['l2_latency'].append((int(schmoo_val), l2_latency))
             self.metrics['mpki'].append((int(schmoo_val), mpki))
         for k,v in self.metrics.items():
-            v.sor()
+            v.sort()
 
     def load(self, csvs:list, columns:list, names:list):
         for csv,name in zip(csvs, names):
@@ -59,6 +63,7 @@ class HarryPlotter:
     def plotboxplot(self, names:list, column:str):
         x = [self.data[name][column].values.tolist() for name in names]
         plt.boxplot(x, labels=names)
+        plt.rc('font', size=15) 
         plt.ylabel(column)
         plt.show()
 
