@@ -19,7 +19,7 @@
 #define RRIP_OVERRIDE_PERC 0
 
 // The base policy is SRRIP. SHIP needs the following on a per-line basis
-#define maxRRPV 2
+#define maxRRPV 3
 uint32_t line_rrpv[MAX_LLC_SETS][LLC_WAYS];
 uint32_t is_prefetch[MAX_LLC_SETS][LLC_WAYS];
 uint32_t fill_core[MAX_LLC_SETS][LLC_WAYS];
@@ -163,7 +163,7 @@ void CACHE::update_replacement_state(uint32_t cpu, uint32_t set, uint32_t way, u
     line_rrpv[set][way] = maxRRPV;
   } else if (SHCT[cpu][new_sig] == 0) {
     line_rrpv[set][way] = (rand() % 100 >= RRIP_OVERRIDE_PERC) ? maxRRPV : priority_RRPV; // LowPriorityInstallMostly
-  } else if (SHCT[cpu][new_sig] == 7) {
+  } else if (SHCT[cpu][new_sig] == maxSHCTR) {
     line_rrpv[set][way] = (type == PREFETCH) ? 1 : 0; // HighPriority Install
   } else {
     line_rrpv[set][way] = priority_RRPV; // HighPriority Install

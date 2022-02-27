@@ -46,7 +46,7 @@ bool prefetched[LLC_SETS][LLC_WAYS];
 HAWKEYE_PC_PREDICTOR* demand_predictor;   // Predictor
 HAWKEYE_PC_PREDICTOR* prefetch_predictor; // Predictor
 
-#define OPTGEN_VECTOR_SIZE 128
+#define OPTGEN_VECTOR_SIZE 32
 #include "optgen.h"
 OPTgen perset_optgen[LLC_SETS]; // per-set occupancy vectors; we only use 64 of these
 
