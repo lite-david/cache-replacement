@@ -1,0 +1,16 @@
+GemsFDTD_109B.trace.xz
+soplex_205B.trace.xz
+astar_313B.trace.xz
+soplex_66B.trace.xz
+GemsFDTD_712B.trace.xz
+mcf_250B.trace.xz
+lbm_94B.trace.xz
+libquantum_964B.trace.xz
+lbm_1004B.trace.xz
+lbm_564B.trace.xz
+libquantum_1735B.trace.xz
+libquantum_1210B.trace.xz
+mcf_158B.trace.xz
+soplex_217B.trace.xz
+leslie3d_94B.trace.xz
+mcf_46B

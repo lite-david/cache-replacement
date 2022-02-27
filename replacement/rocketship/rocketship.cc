@@ -19,6 +19,8 @@
 #define MAX_LLC_SETS 8192
 // 2-bit RRIP counters or all lines
 #define maxRRPV 3
+uint32_t rrpv[MAX_LLC_SETS][LLC_WAYS];
+
 // policy selector counter to dynamically select policy
 #define MAXPSEL 1024
 uint32_t psel;
@@ -29,7 +31,6 @@ uint32_t psel;
  Ship++ specific defines
 
 */
-uint32_t line_rrpv[MAX_LLC_SETS][LLC_WAYS];
 #define SAT_INC(x, max) (x < max) ? (x + 1): x
 #define SAT_DEC(x) (x > 0) ? (x - 1) : x
 #define TRUE 1
@@ -100,8 +101,6 @@ OPTgen perset_optgen[MAX_LLC_SETS]; // per-set occupancy vectors; we only use 64
 #define SAMPLER_SETS SAMPLED_CACHE_SIZE / SAMPLER_WAYS
 vector<map<uint64_t, ADDR_INFO>> addr_history; // Sampler
 
-uint32_t rrpv[MAX_LLC_SETS][LLC_WAYS];
-
 
 // initialize ship++ specific structures
 void initialize_shippp(uint32_t num_set){
@@ -109,7 +108,7 @@ void initialize_shippp(uint32_t num_set){
 
   for (int i = 0; i < MAX_LLC_SETS; i++) {
     for (int j = 0; j < LLC_WAYS; j++) {
-      line_rrpv[i][j] = maxRRPV;
+      rrpv[i][j] = maxRRPV;
       line_reuse[i][j] = FALSE;
       is_prefetch[i][j] = FALSE;
       line_sig[i][j] = 0;
@@ -141,12 +140,12 @@ uint32_t find_victim_shippp(uint32_t cpu, uint64_t instr_id, uint32_t set, const
   // look for the maxRRPV line
   while (1) {
     for (int i = 0; i < LLC_WAYS; i++)
-      if (line_rrpv[set][i] == maxRRPV) { // found victim
+      if (rrpv[set][i] == maxRRPV) { // found victim
         return i;
       }
 
     for (int i = 0; i < LLC_WAYS; i++)
-      line_rrpv[set][i]++;
+      rrpv[set][i]++;
   }
 
   // WE SHOULD NOT REACH HERE
@@ -172,10 +171,10 @@ void update_replacement_state_shippp(uint32_t cpu, uint32_t set, uint32_t way, u
           line_reuse[set][way] = TRUE;
         }
       } else {
-        line_rrpv[set][way] = 0;
+        rrpv[set][way] = 0;
 
         if (is_prefetch[set][way]) {
-          line_rrpv[set][way] = maxRRPV;
+          rrpv[set][way] = maxRRPV;
           is_prefetch[set][way] = FALSE;
           total_prefetch_downgrades++;
         }
@@ -219,17 +218,17 @@ void update_replacement_state_shippp(uint32_t cpu, uint32_t set, uint32_t way, u
   uint32_t priority_RRPV = maxRRPV - 1; // default SHIP
 
   if (type == WRITEBACK) {
-    line_rrpv[set][way] = maxRRPV;
+    rrpv[set][way] = maxRRPV;
   } else if (SHCT[cpu][new_sig] == 0) {
-    line_rrpv[set][way] = (rand() % 100 >= RRIP_OVERRIDE_PERC) ? maxRRPV : priority_RRPV; // LowPriorityInstallMostly
+    rrpv[set][way] = (rand() % 100 >= RRIP_OVERRIDE_PERC) ? maxRRPV : priority_RRPV; // LowPriorityInstallMostly
   } else if (SHCT[cpu][new_sig] == maxSHCTR) {
-    line_rrpv[set][way] = (type == PREFETCH) ? 1 : 0; // HighPriority Install
+    rrpv[set][way] = (type == PREFETCH) ? 1 : 0; // HighPriority Install
   } else {
-    line_rrpv[set][way] = priority_RRPV; // HighPriority Install
+    rrpv[set][way] = priority_RRPV; // HighPriority Install
   }
 
   // Stat tracking for what insertion it was at
-  insertion_distrib[type][line_rrpv[set][way]]++;
+  insertion_distrib[type][rrpv[set][way]]++;
 }
 
 string names[] = {"LOAD", "RFO", "PREF", "WRITEBACK"};
