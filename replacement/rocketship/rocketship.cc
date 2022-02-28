@@ -16,7 +16,7 @@
 */
 #define NUM_CORE 1
 #define LLC_WAYS 16
-#define MAX_LLC_SETS 8192
+#define MAX_LLC_SETS 2048
 // 2-bit RRIP counters or all lines
 #define maxRRPV 3
 uint32_t rrpv[MAX_LLC_SETS][LLC_WAYS];
@@ -30,6 +30,8 @@ uint32_t psel;
 #define HAWKEYE 1
 uint8_t prev_policy, curr_policy;
 uint64_t policy_switches, policy_ping_pong;
+uint64_t shippp_sampler_hits, shippp_sampler_misses;
+uint64_t hawkeye_sampler_hits, hawkeye_sampler_misses;
 
 /*
 
@@ -97,8 +99,9 @@ OPTgen perset_optgen[MAX_LLC_SETS]; // per-set occupancy vectors; we only use 64
 #define bitmask(l) (((l) == 64) ? (unsigned long long)(-1LL) : ((1LL << (l)) - 1LL))
 #define bits(x, i, l) (((x) >> (i)) & bitmask(l))
 // Sample 64 sets per core
-#define SAMPLED_SET(set) (bits(set, 0, 6) == bits(set, ((unsigned long long)log2(MAX_LLC_SETS) - 6), 6))
-
+#define HAWKEYE_SAMPLE_SET(set, num_sets) (bits(set, 0, 6) == bits(set, ((unsigned long long)log2(num_sets) - 6), 6))
+uint32_t hawkeye_sample[MAX_LLC_SETS];
+#define SAMPLED_SET(set) (hawkeye_sample[set] == 1)
 // Sampler to track 8x cache history for sampled sets
 // 2800 entris * 4 bytes per entry = 11.2KB
 #define SAMPLED_CACHE_SIZE 2800
@@ -265,7 +268,7 @@ void replacement_final_stats_shippp()
 
 
 // initialize hawkeye specific structures
-void initialize_hawkeye(){
+void initialize_hawkeye(uint32_t num_set){
   for (int i = 0; i < MAX_LLC_SETS; i++) {
     for (int j = 0; j < LLC_WAYS; j++) {
       rrpv[i][j] = maxRRPV;
@@ -282,6 +285,12 @@ void initialize_hawkeye(){
 
   demand_predictor = new HAWKEYE_PC_PREDICTOR();
   prefetch_predictor = new HAWKEYE_PC_PREDICTOR();
+
+  for(uint32_t i=0; i< num_set; i++){
+    if(HAWKEYE_SAMPLE_SET(i, num_set)){
+      hawkeye_sample[i] = 1;
+    }
+  }
 
   cout << "Initialize Hawkeye state" << endl;
 }
@@ -503,7 +512,8 @@ void replacement_final_stats_hawkeye()
 // initialize replacement state
 void CACHE::initialize_replacement(){
     psel = MAXPSEL/2;
-    initialize_hawkeye();
+    srand(420);
+    initialize_hawkeye(NUM_SET);
     initialize_shippp(NUM_SET);
 
     prev_policy = SHIP_PLUS_PLUS;
@@ -539,6 +549,10 @@ void CACHE::update_replacement_state(uint32_t cpu, uint32_t set, uint32_t way, u
         update_replacement_state_hawkeye(cpu, set, way, paddr, PC, victim_addr, type, hit);
         if(!hit){
             psel = SAT_DEC(psel);
+            hawkeye_sampler_misses++;
+        }
+        else{
+          hawkeye_sampler_hits++;
         }
         return;
     }
@@ -548,10 +562,13 @@ void CACHE::update_replacement_state(uint32_t cpu, uint32_t set, uint32_t way, u
         update_replacement_state_shippp(cpu, set, way, paddr, PC, victim_addr, type, hit);
         if(!hit){
             psel = SAT_INC(psel, MAXPSEL);
+            shippp_sampler_misses++;
+        }
+        else{
+          shippp_sampler_hits++;
         }
         return;
     }
-
     if(psel > (MAXPSEL/2)){
         if(curr_policy != HAWKEYE){
           policy_switches++;
@@ -582,6 +599,8 @@ void CACHE::update_replacement_state(uint32_t cpu, uint32_t set, uint32_t way, u
 void CACHE::replacement_final_stats(){
     std::cout << "Policy switches:" << policy_switches << std::endl;
     std::cout << "Policy ping-pong:" << policy_ping_pong << std::endl;
+    std::cout << "Ship++ sampler hits:" << shippp_sampler_hits << " misses:" << shippp_sampler_misses << std::endl;
+    std::cout << "Hawkeye sampler hits:" << hawkeye_sampler_hits << " misses:" << hawkeye_sampler_misses << std::endl;
     replacement_final_stats_hawkeye();
     replacement_final_stats_shippp();
     return;
