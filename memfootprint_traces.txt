@@ -13,4 +13,4 @@ libquantum_1210B.trace.xz
 mcf_158B.trace.xz
 soplex_217B.trace.xz
 leslie3d_94B.trace.xz
-mcf_46B
+mcf_46B.trace.xz

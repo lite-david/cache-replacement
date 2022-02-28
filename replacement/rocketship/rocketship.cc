@@ -22,9 +22,14 @@
 uint32_t rrpv[MAX_LLC_SETS][LLC_WAYS];
 
 // policy selector counter to dynamically select policy
-#define MAXPSEL 1024
+#define MAXPSEL 128
 uint32_t psel;
 
+// debug structures
+#define SHIP_PLUS_PLUS 0
+#define HAWKEYE 1
+uint8_t prev_policy, curr_policy;
+uint64_t policy_switches, policy_ping_pong;
 
 /*
 
@@ -104,6 +109,7 @@ vector<map<uint64_t, ADDR_INFO>> addr_history; // Sampler
 
 // initialize ship++ specific structures
 void initialize_shippp(uint32_t num_set){
+  total_prefetch_downgrades = 0;
   cout << "Initialize SRRIP state" << endl;
 
   for (int i = 0; i < MAX_LLC_SETS; i++) {
@@ -237,6 +243,7 @@ string names[] = {"LOAD", "RFO", "PREF", "WRITEBACK"};
 void replacement_final_stats_shippp()
 {
   cout << "Insertion Distribution: " << endl;
+  /*
   for (uint32_t i = 0; i < NUM_TYPES; i++) {
     cout << "\t" << names[i] << " ";
     for (uint32_t v = 0; v < maxRRPV + 1; v++) {
@@ -244,7 +251,7 @@ void replacement_final_stats_shippp()
     }
     cout << endl;
   }
-
+  */
   cout << "Total Prefetch Downgrades: " << total_prefetch_downgrades << endl;
 }
 
@@ -495,9 +502,13 @@ void replacement_final_stats_hawkeye()
 
 // initialize replacement state
 void CACHE::initialize_replacement(){
-    psel = MAXPSEL/4;
+    psel = MAXPSEL/2;
     initialize_hawkeye();
     initialize_shippp(NUM_SET);
+
+    prev_policy = SHIP_PLUS_PLUS;
+    policy_switches = 0;
+    policy_ping_pong = 0;
 }
 
 uint32_t CACHE::find_victim(uint32_t cpu, uint64_t instr_id, uint32_t set, const BLOCK* current_set,
@@ -542,10 +553,26 @@ void CACHE::update_replacement_state(uint32_t cpu, uint32_t set, uint32_t way, u
     }
 
     if(psel > (MAXPSEL/2)){
+        if(curr_policy != HAWKEYE){
+          policy_switches++;
+        }
+        if(curr_policy != HAWKEYE && prev_policy == HAWKEYE){
+          policy_ping_pong++;
+        }
+        prev_policy = curr_policy;
+        curr_policy = HAWKEYE;
         update_replacement_state_hawkeye(cpu, set, way, paddr, PC, victim_addr, type, hit);
         return;
     }
     else{
+        if(curr_policy != SHIP_PLUS_PLUS){
+          policy_switches++;
+        }
+        if(curr_policy != SHIP_PLUS_PLUS && prev_policy == SHIP_PLUS_PLUS){
+          policy_ping_pong++;
+        }
+        prev_policy = curr_policy;
+        curr_policy = SHIP_PLUS_PLUS;
         update_replacement_state_shippp(cpu, set, way, paddr, PC, victim_addr, type, hit);
         return;
     }
@@ -553,6 +580,9 @@ void CACHE::update_replacement_state(uint32_t cpu, uint32_t set, uint32_t way, u
 
 
 void CACHE::replacement_final_stats(){
+    std::cout << "Policy switches:" << policy_switches << std::endl;
+    std::cout << "Policy ping-pong:" << policy_ping_pong << std::endl;
     replacement_final_stats_hawkeye();
     replacement_final_stats_shippp();
+    return;
 }
