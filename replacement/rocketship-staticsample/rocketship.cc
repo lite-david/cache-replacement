@@ -138,11 +138,9 @@ void initialize_shippp(uint32_t num_set){
     int set = leaders*interval;
     if(tick){
       ship_sample[set] = 1;
-      cout << set << endl;
     }
     else{
       ship_sample[set + 1] = 1;
-      cout << set+1 << endl;
     }
     tick = 1-tick;
     leaders++;
@@ -300,11 +298,9 @@ void initialize_hawkeye(uint32_t num_set){
     int set = leaders*interval;
     if(tick){
       hawkeye_sample[set] = 1;
-      cout << set << endl;
     }
     else{
       hawkeye_sample[set + 1] = 1;
-      cout << set+1 << endl;
     }
     tick = 1-tick;
     leaders++;
