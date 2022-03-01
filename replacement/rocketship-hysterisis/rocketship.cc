@@ -22,7 +22,7 @@
 uint32_t rrpv[MAX_LLC_SETS][LLC_WAYS];
 
 // policy selector counter to dynamically select policy
-#define MAXPSEL 128
+#define MAXPSEL 256
 #define PSEL_THRESHOLD (MAXPSEL >> 1)
 #define SS 0
 #define WS 1
@@ -573,6 +573,10 @@ void CACHE::update_replacement_state(uint32_t cpu, uint32_t set, uint32_t way, u
     // If it is set that hawkeye is sampling apply hawkeye policy
     if(SAMPLED_SET(set)){
         update_replacement_state_hawkeye(cpu, set, way, paddr, PC, victim_addr, type, hit);
+        // don't count writeback requests
+        if(type == WRITEBACK){
+          return;
+        }
         if(!hit){
             psel = SAT_DEC(psel);
             hawkeye_sampler_misses++;
@@ -586,6 +590,10 @@ void CACHE::update_replacement_state(uint32_t cpu, uint32_t set, uint32_t way, u
     // If it is set that ship++ is sampling apply ship++ policy
     if(ship_sample[set] == 1){
         update_replacement_state_shippp(cpu, set, way, paddr, PC, victim_addr, type, hit);
+        // don't count writeback requests
+        if(type == WRITEBACK){
+          return;
+        }
         if(!hit){
             psel = SAT_INC(psel, MAXPSEL);
             shippp_sampler_misses++;
