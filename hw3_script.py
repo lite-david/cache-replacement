@@ -1,4 +1,4 @@
-from archlib import Analyzer, LaunchExperiment, HarryPlotter
+from archlib import Analyzer, LaunchExperiment, HarryPlotter, Experiment
 import os
 import pandas as pd
 from scipy import stats
@@ -10,7 +10,7 @@ def launch_run(binary_name, tracelist='alltraces.txt'):
                         simulation_inst= 100000000,
                         tracelist=tracelist,
                         tracedir='CRC2_traces',
-                        batchsize=24)
+                        batchsize=8)
     r.run()
 
 
@@ -68,4 +68,23 @@ def genplots():
     plot("hawkeye-sampler", 'analysis')
     plot("hawkeye-optgenvector", 'analysis')
 
-launch_run('rocketship', tracelist='memfootprint_traces.txt')
+
+def gen_binaries():
+    e = Experiment('champsim_config.json')
+    for maxpsel in [64, 128, 256, 512]:
+        e.config['executable_name'] = 'bin/rocketship-hysterisis-maxpsel-' + str(maxpsel)
+        e.config['LLC']['replacement'] = 'rocketship-hysterisis'
+        e.config['LLC']['rocketship-hysterisis'] = {
+            'MAXPSEL': maxpsel,
+        }
+        e.compile_bin()
+    e.config['executable_name'] = 'bin/rocketship-staticsample'
+    e.config['LLC']['replacement'] = 'rocketship-staticsample'
+    e.compile_bin()
+    
+#launch_run('rocketship', tracelist='memfootprint_traces.txt')
+#get_result('results_rocketship')
+gen_binaries()
+launch_runs('rocketship-hysterisis-maxpsel')
+get_results('rocketship-hysterisis-maxpsel')
+

@@ -22,7 +22,7 @@
 uint32_t rrpv[MAX_LLC_SETS][LLC_WAYS];
 
 // policy selector counter to dynamically select policy
-#define MAXPSEL 128
+#define MAXPSEL 256
 uint32_t psel;
 
 // debug structures
@@ -59,7 +59,7 @@ uint64_t line_sig[MAX_LLC_SETS][LLC_WAYS];
 // SHCT. Signature History Counter Table
 // per-core 16K entry. 14-bit signature = 16k entry. 3-bit per entry
 #define maxSHCTR 7
-#define SHIPPP_SHCT_SIZE (1 << 14)
+#define SHIPPP_SHCT_SIZE (1 << 13)
 uint32_t SHCT[NUM_CORE][SHIPPP_SHCT_SIZE];
 
 // Statistics

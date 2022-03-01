@@ -22,7 +22,13 @@
 uint32_t rrpv[MAX_LLC_SETS][LLC_WAYS];
 
 // policy selector counter to dynamically select policy
-#define MAXPSEL 128
+#define MAXPSEL 512
+#define PSEL_THRESHOLD (MAXPSEL >> 1)
+#define SS 0
+#define WS 1
+#define WH 2
+#define SH 3
+uint32_t policy_state;
 uint32_t psel;
 
 // debug structures
@@ -59,7 +65,7 @@ uint64_t line_sig[MAX_LLC_SETS][LLC_WAYS];
 // SHCT. Signature History Counter Table
 // per-core 16K entry. 14-bit signature = 16k entry. 3-bit per entry
 #define maxSHCTR 7
-#define SHIPPP_SHCT_SIZE (1 << 14)
+#define SHIPPP_SHCT_SIZE (1 << 13)
 uint32_t SHCT[NUM_CORE][SHIPPP_SHCT_SIZE];
 
 // Statistics
@@ -100,7 +106,6 @@ OPTgen perset_optgen[MAX_LLC_SETS]; // per-set occupancy vectors; we only use 64
 #define bits(x, i, l) (((x) >> (i)) & bitmask(l))
 // Sample 64 sets per core
 #define HAWKEYE_SAMPLE_SET(set, num_sets) (bits(set, 0, 6) == bits(set, ((unsigned long long)log2(num_sets) - 6), 6))
-#define SHIPPP_SAMPLE_SET(set, num_sets) (bits(set, 1, 6) == bits(set, ((unsigned long long)log2(num_sets) - 5), 6))
 uint32_t hawkeye_sample[MAX_LLC_SETS];
 #define SAMPLED_SET(set) (hawkeye_sample[set] == 1)
 // Sampler to track 8x cache history for sampled sets
@@ -241,12 +246,6 @@ void update_replacement_state_shippp(uint32_t cpu, uint32_t set, uint32_t way, u
     rrpv[set][way] = priority_RRPV; // HighPriority Install
   }
 
-  // age the rest of the counters
-  for (uint32_t i = 0; i < LLC_WAYS; i++) {
-      if(i != way)
-        rrpv[set][i] = SAT_INC(rrpv[set][i], maxRRPV);
-  }
-
   // Stat tracking for what insertion it was at
   insertion_distrib[type][rrpv[set][way]]++;
 }
@@ -311,6 +310,7 @@ void initialize_hawkeye(uint32_t num_set){
     tick = 1-tick;
     leaders++;
   }
+
 
   cout << "Initialize Hawkeye state" << endl;
 }
@@ -532,25 +532,51 @@ void replacement_final_stats_hawkeye()
 // initialize replacement state
 void CACHE::initialize_replacement(){
     psel = MAXPSEL/2;
+    //assertion to ensure structures are well sized for core LLC sets
+    assert(NUM_SET <= MAX_LLC_SETS);
     srand(420);
+
     initialize_hawkeye(NUM_SET);
     initialize_shippp(NUM_SET);
 
-    prev_policy = SHIP_PLUS_PLUS;
+    prev_policy = WS;
     policy_switches = 0;
     policy_ping_pong = 0;
+    policy_state = WS;
 }
 
 uint32_t CACHE::find_victim(uint32_t cpu, uint64_t instr_id, uint32_t set, const BLOCK* current_set,
                              uint64_t PC, uint64_t paddr, uint32_t type) {
-  return find_victim_hawkeye(cpu, instr_id, set, current_set, PC, paddr, type);
+    // If it is a set that hawkeye is sampling, apply hawkeye policy
+    if(SAMPLED_SET(set)){
+        return find_victim_hawkeye(cpu, instr_id, set, current_set, PC, paddr, type);
+    }
+
+    // If it is set that ship++ is sampling apply ship++ policy
+    if(ship_sample[set] == 1){
+        return find_victim_shippp(cpu, instr_id, set, current_set, PC, paddr, type);
+    }
+
+    // policy for follower sets
+    if(policy_state == WH || policy_state == SH){
+        return find_victim_hawkeye(cpu, instr_id, set, current_set, PC, paddr, type);
+    }
+    else{
+        assert(policy_state == SS || policy_state == WS);
+        return find_victim_shippp(cpu, instr_id, set, current_set, PC, paddr, type);
+    }
 }
 
 void CACHE::update_replacement_state(uint32_t cpu, uint32_t set, uint32_t way, uint64_t paddr, uint64_t PC,
                                     uint64_t victim_addr, uint32_t type, uint8_t hit){
 
+    // If it is set that hawkeye is sampling apply hawkeye policy
     if(SAMPLED_SET(set)){
         update_replacement_state_hawkeye(cpu, set, way, paddr, PC, victim_addr, type, hit);
+        // don't count writeback requests
+        if(type == WRITEBACK){
+          return;
+        }
         if(!hit){
             psel = SAT_DEC(psel);
             hawkeye_sampler_misses++;
@@ -564,6 +590,10 @@ void CACHE::update_replacement_state(uint32_t cpu, uint32_t set, uint32_t way, u
     // If it is set that ship++ is sampling apply ship++ policy
     if(ship_sample[set] == 1){
         update_replacement_state_shippp(cpu, set, way, paddr, PC, victim_addr, type, hit);
+        // don't count writeback requests
+        if(type == WRITEBACK){
+          return;
+        }
         if(!hit){
             psel = SAT_INC(psel, MAXPSEL);
             shippp_sampler_misses++;
@@ -573,29 +603,42 @@ void CACHE::update_replacement_state(uint32_t cpu, uint32_t set, uint32_t way, u
         }
         return;
     }
-    if(psel > (MAXPSEL/2)){
-        if(curr_policy != HAWKEYE){
-          policy_switches++;
-        }
-        if(curr_policy != HAWKEYE && prev_policy == HAWKEYE){
-          policy_ping_pong++;
-        }
-        prev_policy = curr_policy;
-        curr_policy = HAWKEYE;
+
+    // for follower sets
+    /*
+    Policy switch: 
+    If psel counter goes above threshold, policy moves to hawkeye
+    If psel counter goes below threshold, policy moves to ship++
+    Movement is gradual rather than hard shift. 
+    Gradual movement is achieved by policy_state FSM.
+    */
+    prev_policy = policy_state; 
+    switch(policy_state){
+      case SS:
+        policy_state = (psel>PSEL_THRESHOLD)? WS:SS;
+        break;
+      case WS:
+        policy_state = (psel>PSEL_THRESHOLD)? WH:SS;
+        break;
+      case WH:
+        policy_state = (psel>PSEL_THRESHOLD)? SH:WS;
+        break;
+      case SH:
+        policy_state = (psel>PSEL_THRESHOLD)? SH:WH;
+        break;
+      default:
+        assert(0); // shouldn't reach here
+    }
+    if(prev_policy == WS && policy_state == WH){
+      policy_switches++;
+    }
+
+    if(policy_state == WH || policy_state == SH){
         update_replacement_state_hawkeye(cpu, set, way, paddr, PC, victim_addr, type, hit);
-        return;
     }
     else{
-        if(curr_policy != SHIP_PLUS_PLUS){
-          policy_switches++;
-        }
-        if(curr_policy != SHIP_PLUS_PLUS && prev_policy == SHIP_PLUS_PLUS){
-          policy_ping_pong++;
-        }
-        prev_policy = curr_policy;
-        curr_policy = SHIP_PLUS_PLUS;
+        assert(policy_state == SS || policy_state == WS);
         update_replacement_state_shippp(cpu, set, way, paddr, PC, victim_addr, type, hit);
-        return;
     }
 }
 
