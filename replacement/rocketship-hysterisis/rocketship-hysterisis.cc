@@ -57,6 +57,7 @@ uint32_t fill_core[MAX_LLC_SETS][LLC_WAYS];
 
 // These two are only for sampled sets (we use 64 sets)
 #define NUM_LEADER_SETS 64
+#define LEADER_BITS (log2(NUM_LEADER_SETS) -1)
 
 uint32_t ship_sample[MAX_LLC_SETS];
 uint32_t line_reuse[MAX_LLC_SETS][LLC_WAYS];
@@ -65,7 +66,7 @@ uint64_t line_sig[MAX_LLC_SETS][LLC_WAYS];
 // SHCT. Signature History Counter Table
 // per-core 16K entry. 14-bit signature = 16k entry. 3-bit per entry
 #define maxSHCTR 7
-#define SHIPPP_SHCT_SIZE (1 << 13)
+#define SHIPPP_SHCT_SIZE (1 << 14)
 uint32_t SHCT[NUM_CORE][SHIPPP_SHCT_SIZE];
 
 // Statistics
@@ -98,14 +99,16 @@ bool prefetched[MAX_LLC_SETS][LLC_WAYS];
 HAWKEYE_PC_PREDICTOR* demand_predictor;   // Predictor
 HAWKEYE_PC_PREDICTOR* prefetch_predictor; // Predictor
 
-#define OPTGEN_VECTOR_SIZE 32
+#define OPTGEN_VECTOR_SIZE 128
 #include "optgen.h"
 OPTgen perset_optgen[MAX_LLC_SETS]; // per-set occupancy vectors; we only use 64 of these
 
 #define bitmask(l) (((l) == 64) ? (unsigned long long)(-1LL) : ((1LL << (l)) - 1LL))
 #define bits(x, i, l) (((x) >> (i)) & bitmask(l))
+#define complementbits(x, i, l) ((~((x) >> (i))) & bitmask(l))
 // Sample 64 sets per core
-#define HAWKEYE_SAMPLE_SET(set, num_sets) (bits(set, 0, 6) == bits(set, ((unsigned long long)log2(num_sets) - 6), 6))
+#define HAWKEYE_SAMPLE_SET(set, num_sets) (bits(set, 0, 5) == bits(set, ((unsigned long long)log2(num_sets) - 5), 5))
+#define SHIPPP_SAMPLE_SET(set, num_sets) (complementbits(set, 0, 5) == bits(set, ((unsigned long long)log2(num_sets) - 5), 5))
 uint32_t hawkeye_sample[MAX_LLC_SETS];
 #define SAMPLED_SET(set) (hawkeye_sample[set] == 1)
 // Sampler to track 8x cache history for sampled sets
@@ -136,6 +139,7 @@ void initialize_shippp(uint32_t num_set){
     }
   }
 
+  /*
   int leaders = 0;
   int tick = 1;
   int interval = num_set/NUM_LEADER_SETS;
@@ -149,6 +153,13 @@ void initialize_shippp(uint32_t num_set){
     }
     tick = 1-tick;
     leaders++;
+  }
+  */
+  for (int i=0; i<num_set; i++){
+    if(SHIPPP_SAMPLE_SET(i, num_set)){
+      ship_sample[i] = 1;
+      assert(!SAMPLED_SET(i));
+    }
   }
 }
 
@@ -296,6 +307,7 @@ void initialize_hawkeye(uint32_t num_set){
   demand_predictor = new HAWKEYE_PC_PREDICTOR();
   prefetch_predictor = new HAWKEYE_PC_PREDICTOR();
 
+  /*
   int leaders = 0;
   int tick = 0;
   int interval = num_set/NUM_LEADER_SETS;
@@ -310,7 +322,13 @@ void initialize_hawkeye(uint32_t num_set){
     tick = 1-tick;
     leaders++;
   }
+  */
 
+  for (int i=0; i<num_set; i++){
+    if(HAWKEYE_SAMPLE_SET(i, num_set)){
+      hawkeye_sample[i] = 1;
+    }
+  }
 
   cout << "Initialize Hawkeye state" << endl;
 }
