@@ -56,7 +56,7 @@ uint32_t is_prefetch[MAX_LLC_SETS][LLC_WAYS];
 uint32_t fill_core[MAX_LLC_SETS][LLC_WAYS];
 
 // These two are only for sampled sets (we use 64 sets)
-#define NUM_LEADER_SETS 32
+#define NUM_LEADER_SETS 64
 
 uint32_t ship_sample[MAX_LLC_SETS];
 uint32_t line_reuse[MAX_LLC_SETS][LLC_WAYS];
