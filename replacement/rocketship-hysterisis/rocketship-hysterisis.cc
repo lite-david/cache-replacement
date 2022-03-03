@@ -20,9 +20,10 @@
 // 2-bit RRIP counters or all lines
 #define maxRRPV 3
 uint32_t rrpv[MAX_LLC_SETS][LLC_WAYS];
-
+#define ISOLATE_RRPV true
+#define FILTER_WB true
 // policy selector counter to dynamically select policy
-#define MAXPSEL 512
+#define MAXPSEL 2048
 #define PSEL_THRESHOLD (MAXPSEL >> 1)
 #define SS 0
 #define WS 1
@@ -56,17 +57,18 @@ uint32_t is_prefetch[MAX_LLC_SETS][LLC_WAYS];
 uint32_t fill_core[MAX_LLC_SETS][LLC_WAYS];
 
 // These two are only for sampled sets (we use 64 sets)
-#define NUM_LEADER_SETS 64
-#define LEADER_BITS (log2(NUM_LEADER_SETS) -1)
+#define NUM_LEADER_SETS 32
+#define LEADER_BITS(num_sets) ((unsigned long long)log2(num_sets/NUM_LEADER_SETS))
 
 uint32_t ship_sample[MAX_LLC_SETS];
+uint32_t ship_rrpv[MAX_LLC_SETS][LLC_WAYS]; //isolated rrpv counters for ship++
 uint32_t line_reuse[MAX_LLC_SETS][LLC_WAYS];
 uint64_t line_sig[MAX_LLC_SETS][LLC_WAYS];
 
 // SHCT. Signature History Counter Table
 // per-core 16K entry. 14-bit signature = 16k entry. 3-bit per entry
 #define maxSHCTR 7
-#define SHIPPP_SHCT_SIZE (1 << 14)
+#define SHIPPP_SHCT_SIZE (1 << 13)
 uint32_t SHCT[NUM_CORE][SHIPPP_SHCT_SIZE];
 
 // Statistics
@@ -99,21 +101,23 @@ bool prefetched[MAX_LLC_SETS][LLC_WAYS];
 HAWKEYE_PC_PREDICTOR* demand_predictor;   // Predictor
 HAWKEYE_PC_PREDICTOR* prefetch_predictor; // Predictor
 
-#define OPTGEN_VECTOR_SIZE 128
+#define OPTGEN_VECTOR_SIZE 64
 #include "optgen.h"
 OPTgen perset_optgen[MAX_LLC_SETS]; // per-set occupancy vectors; we only use 64 of these
 
 #define bitmask(l) (((l) == 64) ? (unsigned long long)(-1LL) : ((1LL << (l)) - 1LL))
 #define bits(x, i, l) (((x) >> (i)) & bitmask(l))
 #define complementbits(x, i, l) ((~((x) >> (i))) & bitmask(l))
-// Sample 64 sets per core
-#define HAWKEYE_SAMPLE_SET(set, num_sets) (bits(set, 0, 5) == bits(set, ((unsigned long long)log2(num_sets) - 5), 5))
-#define SHIPPP_SAMPLE_SET(set, num_sets) (complementbits(set, 0, 5) == bits(set, ((unsigned long long)log2(num_sets) - 5), 5))
+// Sample sets per core
+#define HAWKEYE_SAMPLE_SET(set, num_sets, leader_bits) (bits(set, 0, leader_bits) == bits(set, ((unsigned long long)log2(num_sets) - leader_bits), leader_bits))
+#define SHIPPP_SAMPLE_SET(set, num_sets, leader_bits) (complementbits(set, 0, leader_bits) == bits(set, ((unsigned long long)log2(num_sets) - leader_bits), leader_bits))
 uint32_t hawkeye_sample[MAX_LLC_SETS];
 #define SAMPLED_SET(set) (hawkeye_sample[set] == 1)
 // Sampler to track 8x cache history for sampled sets
 // 2800 entris * 4 bytes per entry = 11.2KB
-#define SAMPLED_CACHE_SIZE 2800
+// 3296 entris * 4 bytes per entry = 12.875KB
+// 3984 entris * 4 bytes per entry = 15.5625 KB
+#define SAMPLED_CACHE_SIZE 3984
 #define SAMPLER_WAYS 8
 #define SAMPLER_SETS SAMPLED_CACHE_SIZE / SAMPLER_WAYS
 vector<map<uint64_t, ADDR_INFO>> addr_history; // Sampler
@@ -124,9 +128,11 @@ void initialize_shippp(uint32_t num_set){
   total_prefetch_downgrades = 0;
   cout << "Initialize SRRIP state" << endl;
 
+  //ship++ uses seprate rrpv counters to isolate aliasing issues with hawkeye
   for (int i = 0; i < MAX_LLC_SETS; i++) {
     for (int j = 0; j < LLC_WAYS; j++) {
       rrpv[i][j] = maxRRPV;
+      ship_rrpv[i][j] = maxRRPV;
       line_reuse[i][j] = FALSE;
       is_prefetch[i][j] = FALSE;
       line_sig[i][j] = 0;
@@ -139,24 +145,8 @@ void initialize_shippp(uint32_t num_set){
     }
   }
 
-  /*
-  int leaders = 0;
-  int tick = 1;
-  int interval = num_set/NUM_LEADER_SETS;
-  while (leaders < NUM_LEADER_SETS) {
-    int set = leaders*interval;
-    if(tick){
-      ship_sample[set] = 1;
-    }
-    else{
-      ship_sample[set + 1] = 1;
-    }
-    tick = 1-tick;
-    leaders++;
-  }
-  */
   for (int i=0; i<num_set; i++){
-    if(SHIPPP_SAMPLE_SET(i, num_set)){
+    if(SHIPPP_SAMPLE_SET(i, num_set, LEADER_BITS(num_set))){
       ship_sample[i] = 1;
       assert(!SAMPLED_SET(i));
     }
@@ -168,6 +158,18 @@ void initialize_shippp(uint32_t num_set){
 uint32_t find_victim_shippp(uint32_t cpu, uint64_t instr_id, uint32_t set, const BLOCK* current_set, uint64_t PC, uint64_t paddr, uint32_t type)
 {
   // look for the maxRRPV line
+  // if isolated rrpv counters for ship++ is enabled, look at its specific counters
+  if(ISOLATE_RRPV && (set%8==0)){
+    while (1) {
+      for (int i = 0; i < LLC_WAYS; i++)
+        if (ship_rrpv[set][i] == maxRRPV) { // found victim
+          return i;
+        }
+
+      for (int i = 0; i < LLC_WAYS; i++)
+        ship_rrpv[set][i]++;
+    }
+  }
   while (1) {
     for (int i = 0; i < LLC_WAYS; i++)
       if (rrpv[set][i] == maxRRPV) { // found victim
@@ -201,10 +203,20 @@ void update_replacement_state_shippp(uint32_t cpu, uint32_t set, uint32_t way, u
           line_reuse[set][way] = TRUE;
         }
       } else {
-        rrpv[set][way] = 0;
+        if(ISOLATE_RRPV && (set%8==0)){
+          ship_rrpv[set][way] = 0;
+        }
+        else{
+          rrpv[set][way] = 0;
+        }
 
         if (is_prefetch[set][way]) {
-          rrpv[set][way] = maxRRPV;
+          if(ISOLATE_RRPV && (set%8==0)){
+            ship_rrpv[set][way] = maxRRPV;
+          }
+          else{
+            rrpv[set][way] = maxRRPV;
+          }
           is_prefetch[set][way] = FALSE;
           total_prefetch_downgrades++;
         }
@@ -247,14 +259,27 @@ void update_replacement_state_shippp(uint32_t cpu, uint32_t set, uint32_t way, u
 
   uint32_t priority_RRPV = maxRRPV - 1; // default SHIP
 
-  if (type == WRITEBACK) {
-    rrpv[set][way] = maxRRPV;
-  } else if (SHCT[cpu][new_sig] == 0) {
-    rrpv[set][way] = (rand() % 100 >= RRIP_OVERRIDE_PERC) ? maxRRPV : priority_RRPV; // LowPriorityInstallMostly
-  } else if (SHCT[cpu][new_sig] == maxSHCTR) {
-    rrpv[set][way] = (type == PREFETCH) ? 1 : 0; // HighPriority Install
-  } else {
-    rrpv[set][way] = priority_RRPV; // HighPriority Install
+  if(ISOLATE_RRPV && (set%8==0)){
+    if (type == WRITEBACK) {
+      ship_rrpv[set][way] = maxRRPV;
+    } else if (SHCT[cpu][new_sig] == 0) {
+      ship_rrpv[set][way] = (rand() % 100 >= RRIP_OVERRIDE_PERC) ? maxRRPV : priority_RRPV; // LowPriorityInstallMostly
+    } else if (SHCT[cpu][new_sig] == maxSHCTR) {
+      ship_rrpv[set][way] = (type == PREFETCH) ? 1 : 0; // HighPriority Install
+    } else {
+      ship_rrpv[set][way] = priority_RRPV; // HighPriority Install
+    }
+  }
+  else{
+    if (type == WRITEBACK) {
+      rrpv[set][way] = maxRRPV;
+    } else if (SHCT[cpu][new_sig] == 0) {
+      rrpv[set][way] = (rand() % 100 >= RRIP_OVERRIDE_PERC) ? maxRRPV : priority_RRPV; // LowPriorityInstallMostly
+    } else if (SHCT[cpu][new_sig] == maxSHCTR) {
+      rrpv[set][way] = (type == PREFETCH) ? 1 : 0; // HighPriority Install
+    } else {
+      rrpv[set][way] = priority_RRPV; // HighPriority Install
+    }
   }
 
   // Stat tracking for what insertion it was at
@@ -325,7 +350,7 @@ void initialize_hawkeye(uint32_t num_set){
   */
 
   for (int i=0; i<num_set; i++){
-    if(HAWKEYE_SAMPLE_SET(i, num_set)){
+    if(HAWKEYE_SAMPLE_SET(i, num_set, LEADER_BITS(num_set))){
       hawkeye_sample[i] = 1;
     }
   }
@@ -592,7 +617,7 @@ void CACHE::update_replacement_state(uint32_t cpu, uint32_t set, uint32_t way, u
     if(SAMPLED_SET(set)){
         update_replacement_state_hawkeye(cpu, set, way, paddr, PC, victim_addr, type, hit);
         // don't count writeback requests
-        if(type == WRITEBACK){
+        if(FILTER_WB && type == WRITEBACK){
           return;
         }
         if(!hit){
@@ -609,7 +634,7 @@ void CACHE::update_replacement_state(uint32_t cpu, uint32_t set, uint32_t way, u
     if(ship_sample[set] == 1){
         update_replacement_state_shippp(cpu, set, way, paddr, PC, victim_addr, type, hit);
         // don't count writeback requests
-        if(type == WRITEBACK){
+        if(FILTER_WB && type == WRITEBACK){
           return;
         }
         if(!hit){
@@ -637,9 +662,13 @@ void CACHE::update_replacement_state(uint32_t cpu, uint32_t set, uint32_t way, u
         break;
       case WS:
         policy_state = (psel>PSEL_THRESHOLD)? WH:SS;
+        if(policy_state == WH && (prev_policy == WH || prev_policy == SH))
+          policy_ping_pong++;
         break;
       case WH:
         policy_state = (psel>PSEL_THRESHOLD)? SH:WS;
+        if(policy_state == WS && (prev_policy == WS || prev_policy == SS))
+          policy_ping_pong++;
         break;
       case SH:
         policy_state = (psel>PSEL_THRESHOLD)? SH:WH;
