@@ -86,7 +86,7 @@ def gen_binaries():
         e.compile_bin()
 
     # config 32KB budget, no wb filtering    
-    e.config['executable_name'] = 'bin/rocketship-hysterisis-small-nowb' + str(maxpsel)
+    e.config['executable_name'] = 'bin/rocketship-hysterisis-small-nowb'
     e.config['LLC']['replacement'] = 'rocketship-hysterisis'
     e.config['LLC']['rocketship-hysterisis'] = {
         'MAXPSEL': maxpsel,
@@ -101,7 +101,7 @@ def gen_binaries():
 
 
     # config 32KB budget, highest IPC within the budget    
-    e.config['executable_name'] = 'bin/rocketship-hysterisis-small' + str(maxpsel)
+    e.config['executable_name'] = 'bin/rocketship-hysterisis-small'
     e.config['LLC']['replacement'] = 'rocketship-hysterisis'
     e.config['LLC']['rocketship-hysterisis'] = {
         'MAXPSEL': maxpsel,
@@ -115,7 +115,7 @@ def gen_binaries():
     e.compile_bin()
     
     # config within 32KB budget, with selected sets rrpv counters isolated
-    e.config['executable_name'] = 'bin/rocketship-hysterisis-small-isolaterrpv' + str(maxpsel)
+    e.config['executable_name'] = 'bin/rocketship-hysterisis-small-isolaterrpv'
     e.config['LLC']['replacement'] = 'rocketship-hysterisis'
     e.config['LLC']['rocketship-hysterisis'] = {
         'MAXPSEL': maxpsel,
@@ -130,7 +130,7 @@ def gen_binaries():
 
 
     # config with higher budget, rrpv isolation, higher sampler size
-    e.config['executable_name'] = 'bin/rocketship-hysterisis-large' + str(maxpsel)
+    e.config['executable_name'] = 'bin/rocketship-hysterisis-large'
     e.config['LLC']['replacement'] = 'rocketship-hysterisis'
     e.config['LLC']['rocketship-hysterisis'] = {
         'MAXPSEL': maxpsel,
