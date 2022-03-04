@@ -20,8 +20,9 @@
 // 2-bit RRIP counters or all lines
 #define maxRRPV 3
 uint32_t rrpv[MAX_LLC_SETS][LLC_WAYS];
-#define ISOLATE_RRPV true
-#define ISOLATE_RRPV_COND true
+#define HYSTERISIS false
+#define ISOLATE_RRPV false
+#define ISOLATE_RRPV_COND ((set%8)==0)
 #define FILTER_WB true
 // policy selector counter to dynamically select policy
 #define MAXPSEL 512
@@ -58,7 +59,7 @@ uint32_t is_prefetch[MAX_LLC_SETS][LLC_WAYS];
 uint32_t fill_core[MAX_LLC_SETS][LLC_WAYS];
 
 // These two are only for sampled sets (we use 64 sets)
-#define NUM_LEADER_SETS 128
+#define NUM_LEADER_SETS 32
 #define LEADER_BITS(num_sets) ((unsigned long long)log2(num_sets/NUM_LEADER_SETS))
 
 uint32_t ship_sample[MAX_LLC_SETS];
@@ -69,7 +70,7 @@ uint64_t line_sig[MAX_LLC_SETS][LLC_WAYS];
 // SHCT. Signature History Counter Table
 // per-core 16K entry. 14-bit signature = 16k entry. 3-bit per entry
 #define maxSHCTR 7
-#define SHIPPP_SHCT_SIZE (1 << 15)
+#define SHIPPP_SHCT_SIZE (1 << 13)
 uint32_t SHCT[NUM_CORE][SHIPPP_SHCT_SIZE];
 
 // Statistics
@@ -96,13 +97,13 @@ bool prefetched[MAX_LLC_SETS][LLC_WAYS];
 // Predictor with 2K entries and 5-bit counter per entry
 // Budget = 2048*5/8 bytes = 1.2KB
 #define MAX_SHCT 31
-#define SHCT_SIZE_BITS 13
+#define SHCT_SIZE_BITS 11
 #define HAWKEYE_SHCT_SIZE (1 << SHCT_SIZE_BITS)
 #include "hawkeye_predictor.h"
 HAWKEYE_PC_PREDICTOR* demand_predictor;   // Predictor
 HAWKEYE_PC_PREDICTOR* prefetch_predictor; // Predictor
 
-#define OPTGEN_VECTOR_SIZE 128
+#define OPTGEN_VECTOR_SIZE 64
 #include "optgen.h"
 OPTgen perset_optgen[MAX_LLC_SETS]; // per-set occupancy vectors; we only use 64 of these
 
@@ -118,7 +119,7 @@ uint32_t hawkeye_sample[MAX_LLC_SETS];
 // 2800 entris * 4 bytes per entry = 11.2KB
 // 3296 entris * 4 bytes per entry = 12.875KB
 // 3984 entris * 4 bytes per entry = 15.5625 KB
-#define SAMPLED_CACHE_SIZE 5600
+#define SAMPLED_CACHE_SIZE 3984
 #define SAMPLER_WAYS 8
 #define SAMPLER_SETS SAMPLED_CACHE_SIZE / SAMPLER_WAYS
 vector<map<uint64_t, ADDR_INFO>> addr_history; // Sampler
@@ -583,10 +584,16 @@ void CACHE::initialize_replacement(){
     initialize_hawkeye(NUM_SET);
     initialize_shippp(NUM_SET);
 
-    prev_policy = WS;
     policy_switches = 0;
     policy_ping_pong = 0;
-    policy_state = WS;
+    if(HYSTERISIS){
+      prev_policy = WS;
+      policy_state = WS;
+    }
+    else{
+      prev_policy = SS;
+      policy_state = SS;
+    }
 }
 
 uint32_t CACHE::find_victim(uint32_t cpu, uint64_t instr_id, uint32_t set, const BLOCK* current_set,
@@ -656,29 +663,61 @@ void CACHE::update_replacement_state(uint32_t cpu, uint32_t set, uint32_t way, u
     Movement is gradual rather than hard shift. 
     Gradual movement is achieved by policy_state FSM.
     */
-    prev_policy = policy_state; 
-    switch(policy_state){
-      case SS:
-        policy_state = (psel>PSEL_THRESHOLD)? WS:SS;
-        break;
-      case WS:
-        policy_state = (psel>PSEL_THRESHOLD)? WH:SS;
-        if(policy_state == WH && (prev_policy == WH || prev_policy == SH))
-          policy_ping_pong++;
-        break;
-      case WH:
-        policy_state = (psel>PSEL_THRESHOLD)? SH:WS;
-        if(policy_state == WS && (prev_policy == WS || prev_policy == SS))
-          policy_ping_pong++;
-        break;
-      case SH:
-        policy_state = (psel>PSEL_THRESHOLD)? SH:WH;
-        break;
-      default:
-        assert(0); // shouldn't reach here
+    if(HYSTERISIS){
+      switch(policy_state){
+        case SS:
+          policy_state = (psel>PSEL_THRESHOLD)? WS:SS;
+          prev_policy = SS; 
+          break;
+        case WS:
+          policy_state = (psel>PSEL_THRESHOLD)? WH:SS;
+          if(policy_state == WH && (prev_policy == WH || prev_policy == SH))
+            policy_ping_pong++;
+          prev_policy = WS; 
+          break;
+        case WH:
+          policy_state = (psel>PSEL_THRESHOLD)? SH:WS;
+          if(policy_state == WS && (prev_policy == WS || prev_policy == SS))
+            policy_ping_pong++;
+          prev_policy = WH; 
+          break;
+        case SH:
+          policy_state = (psel>PSEL_THRESHOLD)? SH:WH;
+          prev_policy = SH; 
+          break;
+        default:
+          assert(0); // shouldn't reach here
+      }
+      if(prev_policy == WS && policy_state == WH){
+        policy_switches++;
+      }
     }
-    if(prev_policy == WS && policy_state == WH){
-      policy_switches++;
+    else{
+      switch(policy_state){
+        case SS:
+          policy_state = (psel > PSEL_THRESHOLD)? SH:policy_state;
+          if(policy_state == SH && prev_policy == SH)
+            policy_ping_pong++;
+          prev_policy = SS; 
+          break;
+        case SH:
+          policy_state = (psel < PSEL_THRESHOLD)? SS:policy_state;
+          if(policy_state == SS && prev_policy == SS)
+            policy_ping_pong++;
+          prev_policy = SH; 
+          break;
+        case WH:
+          policy_state = SH;
+          break;
+        case WS:
+          policy_state = SS;
+          break;
+        default:
+          assert(0); //shouldn't reach here
+      }
+      if(prev_policy != policy_state){
+        policy_switches++;
+      }
     }
 
     if(policy_state == WH || policy_state == SH){
