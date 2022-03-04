@@ -21,9 +21,10 @@
 #define maxRRPV 3
 uint32_t rrpv[MAX_LLC_SETS][LLC_WAYS];
 #define ISOLATE_RRPV true
+#define ISOLATE_RRPV_COND true
 #define FILTER_WB true
 // policy selector counter to dynamically select policy
-#define MAXPSEL 2048
+#define MAXPSEL 512
 #define PSEL_THRESHOLD (MAXPSEL >> 1)
 #define SS 0
 #define WS 1
@@ -57,7 +58,7 @@ uint32_t is_prefetch[MAX_LLC_SETS][LLC_WAYS];
 uint32_t fill_core[MAX_LLC_SETS][LLC_WAYS];
 
 // These two are only for sampled sets (we use 64 sets)
-#define NUM_LEADER_SETS 32
+#define NUM_LEADER_SETS 128
 #define LEADER_BITS(num_sets) ((unsigned long long)log2(num_sets/NUM_LEADER_SETS))
 
 uint32_t ship_sample[MAX_LLC_SETS];
@@ -68,7 +69,7 @@ uint64_t line_sig[MAX_LLC_SETS][LLC_WAYS];
 // SHCT. Signature History Counter Table
 // per-core 16K entry. 14-bit signature = 16k entry. 3-bit per entry
 #define maxSHCTR 7
-#define SHIPPP_SHCT_SIZE (1 << 13)
+#define SHIPPP_SHCT_SIZE (1 << 15)
 uint32_t SHCT[NUM_CORE][SHIPPP_SHCT_SIZE];
 
 // Statistics
@@ -95,13 +96,13 @@ bool prefetched[MAX_LLC_SETS][LLC_WAYS];
 // Predictor with 2K entries and 5-bit counter per entry
 // Budget = 2048*5/8 bytes = 1.2KB
 #define MAX_SHCT 31
-#define SHCT_SIZE_BITS 11
+#define SHCT_SIZE_BITS 13
 #define HAWKEYE_SHCT_SIZE (1 << SHCT_SIZE_BITS)
 #include "hawkeye_predictor.h"
 HAWKEYE_PC_PREDICTOR* demand_predictor;   // Predictor
 HAWKEYE_PC_PREDICTOR* prefetch_predictor; // Predictor
 
-#define OPTGEN_VECTOR_SIZE 64
+#define OPTGEN_VECTOR_SIZE 128
 #include "optgen.h"
 OPTgen perset_optgen[MAX_LLC_SETS]; // per-set occupancy vectors; we only use 64 of these
 
@@ -117,7 +118,7 @@ uint32_t hawkeye_sample[MAX_LLC_SETS];
 // 2800 entris * 4 bytes per entry = 11.2KB
 // 3296 entris * 4 bytes per entry = 12.875KB
 // 3984 entris * 4 bytes per entry = 15.5625 KB
-#define SAMPLED_CACHE_SIZE 3984
+#define SAMPLED_CACHE_SIZE 5600
 #define SAMPLER_WAYS 8
 #define SAMPLER_SETS SAMPLED_CACHE_SIZE / SAMPLER_WAYS
 vector<map<uint64_t, ADDR_INFO>> addr_history; // Sampler
@@ -159,7 +160,7 @@ uint32_t find_victim_shippp(uint32_t cpu, uint64_t instr_id, uint32_t set, const
 {
   // look for the maxRRPV line
   // if isolated rrpv counters for ship++ is enabled, look at its specific counters
-  if(ISOLATE_RRPV && (set%8==0)){
+  if(ISOLATE_RRPV && ISOLATE_RRPV_COND){
     while (1) {
       for (int i = 0; i < LLC_WAYS; i++)
         if (ship_rrpv[set][i] == maxRRPV) { // found victim
@@ -203,7 +204,7 @@ void update_replacement_state_shippp(uint32_t cpu, uint32_t set, uint32_t way, u
           line_reuse[set][way] = TRUE;
         }
       } else {
-        if(ISOLATE_RRPV && (set%8==0)){
+        if(ISOLATE_RRPV && ISOLATE_RRPV_COND){
           ship_rrpv[set][way] = 0;
         }
         else{
@@ -211,7 +212,7 @@ void update_replacement_state_shippp(uint32_t cpu, uint32_t set, uint32_t way, u
         }
 
         if (is_prefetch[set][way]) {
-          if(ISOLATE_RRPV && (set%8==0)){
+          if(ISOLATE_RRPV && ISOLATE_RRPV_COND){
             ship_rrpv[set][way] = maxRRPV;
           }
           else{
@@ -259,7 +260,7 @@ void update_replacement_state_shippp(uint32_t cpu, uint32_t set, uint32_t way, u
 
   uint32_t priority_RRPV = maxRRPV - 1; // default SHIP
 
-  if(ISOLATE_RRPV && (set%8==0)){
+  if(ISOLATE_RRPV && ISOLATE_RRPV_COND){
     if (type == WRITEBACK) {
       ship_rrpv[set][way] = maxRRPV;
     } else if (SHCT[cpu][new_sig] == 0) {

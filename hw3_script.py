@@ -70,6 +70,7 @@ def genplots():
 
 def gen_binaries():
     e = Experiment('champsim_config.json')
+    '''
     # binaries to find best psel value
     for maxpsel in [64, 128, 256, 512, 1024, 2048]:
         e.config['executable_name'] = 'bin/rocketship-hysterisis-maxpsel-' + str(maxpsel)
@@ -84,15 +85,17 @@ def gen_binaries():
             'NUM_LEADER_SETS':64
         }
         e.compile_bin()
-
+    '''
     # config 32KB budget, no wb filtering    
     e.config['executable_name'] = 'bin/rocketship-hysterisis-small-nowb'
     e.config['LLC']['replacement'] = 'rocketship-hysterisis'
     e.config['LLC']['rocketship-hysterisis'] = {
-        'MAXPSEL': maxpsel,
+        'MAXPSEL': 512,
         'ISOLATE_RRPV':'false',
+        'ISOLATE_RRPV_COND':'((set%8)==0)',
         'FILTER_WB':'false',
         'SHIPPP_SHCT_SIZE':'(1 << 13)',
+        'SHCT_SIZE_BITS': 11,
         'OPTGEN_VECTOR_SIZE':64,
         'SAMPLED_CACHE_SIZE':3984,
         'NUM_LEADER_SETS':32
@@ -104,10 +107,12 @@ def gen_binaries():
     e.config['executable_name'] = 'bin/rocketship-hysterisis-small'
     e.config['LLC']['replacement'] = 'rocketship-hysterisis'
     e.config['LLC']['rocketship-hysterisis'] = {
-        'MAXPSEL': maxpsel,
+        'MAXPSEL': 512,
         'ISOLATE_RRPV':'false',
+        'ISOLATE_RRPV_COND':'((set%8)==0)',
         'FILTER_WB':'true',
         'SHIPPP_SHCT_SIZE':'(1 << 13)',
+        'SHCT_SIZE_BITS': 11,
         'OPTGEN_VECTOR_SIZE':64,
         'SAMPLED_CACHE_SIZE':3984,
         'NUM_LEADER_SETS':32
@@ -118,28 +123,31 @@ def gen_binaries():
     e.config['executable_name'] = 'bin/rocketship-hysterisis-small-isolaterrpv'
     e.config['LLC']['replacement'] = 'rocketship-hysterisis'
     e.config['LLC']['rocketship-hysterisis'] = {
-        'MAXPSEL': maxpsel,
+        'MAXPSEL': 512,
         'ISOLATE_RRPV':'true',
+        'ISOLATE_RRPV_COND':'((set%8)==0)',
         'FILTER_WB':'true',
         'SHIPPP_SHCT_SIZE':'(1 << 13)',
+        'SHCT_SIZE_BITS': 11,
         'OPTGEN_VECTOR_SIZE':64,
         'SAMPLED_CACHE_SIZE':3296,
         'NUM_LEADER_SETS':32
     }
     e.compile_bin()
 
-
     # config with higher budget, rrpv isolation, higher sampler size
     e.config['executable_name'] = 'bin/rocketship-hysterisis-large'
     e.config['LLC']['replacement'] = 'rocketship-hysterisis'
     e.config['LLC']['rocketship-hysterisis'] = {
-        'MAXPSEL': maxpsel,
+        'MAXPSEL': 512,
         'ISOLATE_RRPV':'true',
+        'ISOLATE_RRPV_COND':'true',
         'FILTER_WB':'true',
-        'SHIPPP_SHCT_SIZE':'(1 << 13)',
-        'OPTGEN_VECTOR_SIZE':64,
-        'SAMPLED_CACHE_SIZE':3984,
-        'NUM_LEADER_SETS':32
+        'SHIPPP_SHCT_SIZE':'(1 << 15)',
+        'SHCT_SIZE_BITS': 13,
+        'OPTGEN_VECTOR_SIZE':128,
+        'SAMPLED_CACHE_SIZE':5600,
+        'NUM_LEADER_SETS':128
     }
     e.compile_bin()
     
