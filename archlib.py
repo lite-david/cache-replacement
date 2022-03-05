@@ -61,9 +61,9 @@ class HarryPlotter:
             df = df[columns]
             self.data[name] = df
 
-    def plotboxplot(self, names:list, column:str):
+    def plotboxplot(self, names:list, column:str, showfliers=True):
         x = [self.data[name][column].values.tolist() for name in names]
-        plt.boxplot(x, labels=names)
+        plt.boxplot(x, labels=names, showfliers=showfliers)
         plt.rc('font', size=15) 
         plt.ylabel(column)
         plt.show()

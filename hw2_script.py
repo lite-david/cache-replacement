@@ -53,16 +53,17 @@ def plotbox():
               columns=['Cumulative IPC', 'LLC TOTAL MISS'], names=['lru', 'ship', 'ship++', 'hawkeye'])
     for name in hp.data.keys():
         gmean = stats.gmean(hp.data[name]['Cumulative IPC'])
-        mpki = hp.data[name]['LLC TOTAL MISS']/100000
-        mean_mpki = sum(mpki.values.tolist())/len(mpki.values.tolist())
+        hp.data[name]['MPKI'] = hp.data[name]['LLC TOTAL MISS']/100000
+        mean_mpki = hp.data[name]['MPKI'].mean()
         print(f'{name} geomean IPC: {gmean}')
         print(f'{name} avg MPKI: {mean_mpki}')
-    #hp.plotboxplot(names=['lru', 'ship', 'ship++', 'hawkeye'], column='Cumulative IPC')
+    hp.plotboxplot(names=['lru', 'ship', 'ship++', 'hawkeye'], column='Cumulative IPC')
+    hp.plotboxplot(names=['lru', 'ship', 'ship++', 'hawkeye'], column='MPKI')
 
 def genplots():
-    plot("shippp-maxrrpv", 'analysis')
-    plot("shippp-maxshctr", 'analysis')
-    plot("shippp-leaders", 'analysis')
+    #plot("shippp-maxrrpv", 'analysis')
+    #plot("shippp-maxshctr", 'analysis')
+    plot("shippp-shctsize", 'analysis')
     plot("hawkeye-maxrrpv", 'analysis')
     plot("hawkeye-sampler", 'analysis')
     plot("hawkeye-optgenvector", 'analysis')
@@ -76,6 +77,6 @@ def genplots():
 #get_results()
 #get_result("results_champsim-llc-2mb-noprefetch-shippp-maxrrpv-4")
 #get_result("results_champsim-llc-2mb-noprefetch-ship")
-#genplots()
-plotbox()
+genplots()
+#plotbox()
 

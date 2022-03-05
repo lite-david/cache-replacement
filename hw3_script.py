@@ -48,19 +48,10 @@ def plot(feature, dirname):
 
 def plotbox():
     hp = HarryPlotter()
-    hp.load(['analysis/results_champsim-llc-2mb-noprefetch-lru.csv',
-             'analysis/results_champsim-llc-2mb-noprefetch-ship.csv',
-             'analysis/results_champsim-llc-2mb-noprefetch-shippp.csv',
-             'analysis/results_champsim-llc-2mb-noprefetch-hawkeye.csv'],
-              columns=['Cumulative IPC', 'LLC TOTAL MISS'], names=['lru', 'ship', 'ship++', 'hawkeye'])
-    for name in hp.data.keys():
-        gmean = stats.gmean(hp.data[name]['Cumulative IPC'])
-        hp.data[name]['MPKI'] = hp.data[name]['LLC TOTAL MISS']/100000
-        mean_mpki = hp.data[name]['MPKI'].mean()
-        print(f'{name} geomean IPC: {gmean}')
-        print(f'{name} avg MPKI: {mean_mpki}')
-    #hp.plotboxplot(names=['lru', 'ship', 'ship++', 'hawkeye'], column='Cumulative IPC')
-    #hp.plotboxplot(names=['lru', 'ship', 'ship++', 'hawkeye'], column='MPKI')
+    hp.load(['hw3_analysis/hysterisis-policyswitches.txt',
+             'hw3_analysis/nohysterisis-policyswitches.txt'],
+              columns=['switches'], names=['hysteresis', 'nohysteresis'])
+    hp.plotboxplot(names=['nohysteresis', 'hysteresis'], column='switches', showfliers=True)
 
 def genplots():
     #plot("shippp-maxrrpv", 'analysis')
@@ -70,13 +61,14 @@ def genplots():
 
 def gen_binaries():
     e = Experiment('champsim_config.json')
-    '''
+
     # binaries to find best psel value
     for maxpsel in [64, 128, 256, 512, 1024, 2048]:
         e.config['executable_name'] = 'bin/rocketship-hysterisis-maxpsel-' + str(maxpsel)
         e.config['LLC']['replacement'] = 'rocketship-hysterisis'
         e.config['LLC']['rocketship-hysterisis'] = {
             'MAXPSEL': maxpsel,
+            'HYSTERISIS':'true',
             'ISOLATE_RRPV':'false',
             'FILTER_WB':'true',
             'SHIPPP_SHCT_SIZE':'(1 << 14)',
@@ -85,13 +77,13 @@ def gen_binaries():
             'NUM_LEADER_SETS':64
         }
         e.compile_bin()
-    '''
     # config 32KB budget, no wb filtering    
     e.config['executable_name'] = 'bin/rocketship-hysterisis-small-nowb'
     e.config['LLC']['replacement'] = 'rocketship-hysterisis'
     e.config['LLC']['rocketship-hysterisis'] = {
         'MAXPSEL': 512,
         'ISOLATE_RRPV':'false',
+        'HYSTERISIS':'true',
         'ISOLATE_RRPV_COND':'((set%8)==0)',
         'FILTER_WB':'false',
         'SHIPPP_SHCT_SIZE':'(1 << 13)',
@@ -109,6 +101,7 @@ def gen_binaries():
     e.config['LLC']['rocketship-hysterisis'] = {
         'MAXPSEL': 512,
         'ISOLATE_RRPV':'false',
+        'HYSTERISIS':'true',
         'ISOLATE_RRPV_COND':'((set%8)==0)',
         'FILTER_WB':'true',
         'SHIPPP_SHCT_SIZE':'(1 << 13)',
@@ -125,6 +118,7 @@ def gen_binaries():
     e.config['LLC']['rocketship-hysterisis'] = {
         'MAXPSEL': 512,
         'ISOLATE_RRPV':'true',
+        'HYSTERISIS':'true',
         'ISOLATE_RRPV_COND':'((set%8)==0)',
         'FILTER_WB':'true',
         'SHIPPP_SHCT_SIZE':'(1 << 13)',
@@ -134,13 +128,14 @@ def gen_binaries():
         'NUM_LEADER_SETS':32
     }
     e.compile_bin()
-
+    
     # config with higher budget, rrpv isolation, higher sampler size
     e.config['executable_name'] = 'bin/rocketship-hysterisis-large'
     e.config['LLC']['replacement'] = 'rocketship-hysterisis'
     e.config['LLC']['rocketship-hysterisis'] = {
         'MAXPSEL': 512,
         'ISOLATE_RRPV':'true',
+        'HYSTERISIS':'true',
         'ISOLATE_RRPV_COND':'true',
         'FILTER_WB':'true',
         'SHIPPP_SHCT_SIZE':'(1 << 15)',
@@ -148,6 +143,23 @@ def gen_binaries():
         'OPTGEN_VECTOR_SIZE':128,
         'SAMPLED_CACHE_SIZE':5600,
         'NUM_LEADER_SETS':128
+    }
+    e.compile_bin()
+
+    # config with no hysterisis
+    e.config['executable_name'] = 'bin/rocketship-hysterisis-small-nohysterisis'
+    e.config['LLC']['replacement'] = 'rocketship-hysterisis'
+    e.config['LLC']['rocketship-hysterisis'] = {
+        'MAXPSEL': 512,
+        'ISOLATE_RRPV':'false',
+        'HYSTERISIS':'false',
+        'ISOLATE_RRPV_COND':'((set%8)==0)',
+        'FILTER_WB':'true',
+        'SHIPPP_SHCT_SIZE':'(1 << 13)',
+        'SHCT_SIZE_BITS': 11,
+        'OPTGEN_VECTOR_SIZE':64,
+        'SAMPLED_CACHE_SIZE':3984,
+        'NUM_LEADER_SETS':32
     }
     e.compile_bin()
     
@@ -161,7 +173,10 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--launchrun', default=None)
 parser.add_argument('--tracelist', default='alltraces.txt')
 parser.add_argument('--getresult', default=None)
+parser.add_argument('--plot', default=None)
+parser.add_argument('--plotdatadir', default=None)
 parser.add_argument('--genbin', default=None, action='store_true')
+parser.add_argument('--plotbox')
 args = parser.parse_args()
 if args.genbin is not None:
     gen_binaries()
@@ -170,4 +185,8 @@ if args.launchrun is not None:
     get_result('results_' + args.launchrun)
 if args.getresult is not None:
     get_result(args.getresult)
-
+if args.plot is not None:
+    if args.plotdatadir is None:
+        raise RuntimeError('--plotdatadir not specified!')
+    plot(args.plot, args.plotdatadir)
+plotbox()
